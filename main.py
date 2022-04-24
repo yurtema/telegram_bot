@@ -49,7 +49,7 @@ def send_picture(person_id: int, pic_type: str, daily=0, quote='нет'):
     bot.send_photo(person_id, pic)
     
     if quote == 'да':
-        bot.send_photo(person_id, pic, caption=choice(config.auf))
+        bot.send_message(person_id, choice(config.auf))
 
 
 def start_handler(update: Update, context: CallbackContext):
