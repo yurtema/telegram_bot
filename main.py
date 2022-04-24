@@ -2,6 +2,7 @@ import config
 import sqlite3
 import re
 from time import sleep
+from datetime import datetime
 from numpy import rot90
 from os import listdir
 from random import choice
@@ -26,7 +27,7 @@ from telegram.ext import (
 ASK_TIME, CHECK_TIME, CHECK_TYPE, CHECK_QUOTE = range(4)
 
 
-def isTimeFormat(input_):
+def isTimeFormat(input_) -> bool:
     """Проверка, является ли строка временем"""
     
     hours = input_.split(':')[0]
@@ -34,6 +35,28 @@ def isTimeFormat(input_):
         return True
     else:
         return False
+
+
+def next_bell() -> str:
+    """ Возврат времени следующего звонка"""
+    hour = str(datetime.now().hour)
+    minute = str(datetime.now().minute)
+    
+    # Превращение 9 минут в 09.
+    if int(minute) < 10:
+        minute = '0' + minute
+    
+    now = int(hour + minute)
+
+
+    if now >= 1540:
+        return 'Мужик, уроки закончились уже'
+    
+    for i in config.schedule:
+        if now < int(i):
+            i = list(i)
+            i.insert(2, ':')
+            return ''.join(i)
 
 
 def send_picture(person_id: int, pic_type: str, daily=0, quote='нет'):
@@ -52,11 +75,19 @@ def send_picture(person_id: int, pic_type: str, daily=0, quote='нет'):
         bot.send_message(person_id, choice(config.auf))
 
 
+# --------------------------------------------------------------------------- #
+
+
 def start_handler(update: Update, context: CallbackContext):
     """ Первая функция для всех пользователей """
     
     # Приветственное сообщение
-    update.message.reply_text(config.start_text)
+    update.message.reply_text(config.start_text,
+                              reply_markup=ReplyKeyboardMarkup(
+                                  [pic_types], one_time_keyboard=False,
+                                  input_field_placeholder='',
+                                  resize_keyboard=True
+                                  ))
     
     # Запись в список id пользователей если такие есть.
     used_ids = []
@@ -166,7 +197,12 @@ def profile_handler(update: Update, context: CallbackContext):
                                           row[5])
         
         bot.send_message(update.effective_message.chat_id,
-                         'Ваш профиль рассылки успешно обновлен.')
+                         'Ваш профиль рассылки успешно обновлен.',
+                         reply_markup=ReplyKeyboardMarkup(
+                             [pic_types], one_time_keyboard=False,
+                             input_field_placeholder='',
+                             resize_keyboard=True
+                             ))
         
         # Выход из ветки диалога.
         return ConversationHandler.END
@@ -179,20 +215,37 @@ def profile_handler(update: Update, context: CallbackContext):
     if send_daily:
         if quote == 'да':
             update.message.reply_text('Ваш профиль рассылки: %s в %s с цитатой'
-                                      % (pic_type, time))
+                                      % (pic_type, time),
+                                      reply_markup=ReplyKeyboardMarkup(
+                                          [pic_types], one_time_keyboard=False,
+                                          input_field_placeholder='',
+                                          resize_keyboard=True
+                                          ))
         else:
             update.message.reply_text('Ваш профиль рассылки: %s в %s'
-                                      % (pic_type, time))
+                                      % (pic_type, time),
+                                      reply_markup=ReplyKeyboardMarkup(
+                                          [pic_types], one_time_keyboard=False,
+                                          input_field_placeholder='',
+                                          resize_keyboard=True
+                                          ))
         return ConversationHandler.END
     
     # Если нет, начало диалога.
     update.message.reply_text('У вас нет профиля рассылки, хотите создать?',
                               reply_markup=ReplyKeyboardMarkup(
                                   [['да', 'нет']], one_time_keyboard=True,
-                                  input_field_placeholder=
-                                  ''
+                                  input_field_placeholder='',
+                                  resize_keyboard=True
                                   ))
     return ASK_TIME
+
+
+def next_bell_handler(update: Update, context: CallbackContext):
+    """ Обработчик запроса следующего звонка """
+    update.message.reply_text(next_bell())
+
+# --------------------------------------------------------------------------- #
 
 
 def ask_time(update: Update, context: CallbackContext):
@@ -211,13 +264,18 @@ def check_time(update: Update, context: CallbackContext):
         update.message.reply_text('Какой тип фото желаете?',
                                   reply_markup=ReplyKeyboardMarkup(
                                       [pic_types], one_time_keyboard=True,
-                                      input_field_placeholder=
-                                      ''
+                                      input_field_placeholder='',
+                                      resize_keyboard=True
                                       ))
         
         tmp.append(msg)
         return CHECK_TYPE
-    update.message.reply_text('Вы ввели некорректный аргумент')
+    update.message.reply_text('Вы ввели некорректный аргумент',
+                              reply_markup=ReplyKeyboardMarkup(
+                                  [pic_types], one_time_keyboard=False,
+                                  input_field_placeholder='',
+                                  resize_keyboard=True
+                                  ))
     return ConversationHandler.END
 
 
@@ -230,11 +288,16 @@ def check_type(update: Update, context: CallbackContext):
         update.message.reply_text('Присылать цитату?',
                                   reply_markup=ReplyKeyboardMarkup(
                                       [['да', 'нет']], one_time_keyboard=True,
-                                      input_field_placeholder=
-                                      ''
+                                      input_field_placeholder='',
+                                      resize_keyboard=True
                                       ))
         return CHECK_QUOTE
-    update.message.reply_text('Вы ввели некорректный аргумент')
+    update.message.reply_text('Вы ввели некорректный аргумент',
+                              reply_markup=ReplyKeyboardMarkup(
+                                  [pic_types], one_time_keyboard=False,
+                                  input_field_placeholder='',
+                                  resize_keyboard=True
+                                  ))
     return ConversationHandler.END
 
 
@@ -246,7 +309,7 @@ def check_quote(update: Update, context: CallbackContext):
         tmp.append(msg)
         update.message.reply_text('Записываю ваш профиль....',
                                   reply_markup=ReplyKeyboardRemove())
-
+        
         # Запись данных в бд.
         cur.execute("UPDATE main SET "
                     "send_daily = 1, time=:time, "
@@ -255,23 +318,38 @@ def check_quote(update: Update, context: CallbackContext):
                      'id': update.effective_chat.id})
         connection.commit()
         tmp = []
-
+        
         # Пересоаздание всех работ.
         clear()
         for row in cur.execute('SELECT * FROM main WHERE send_daily = 1'):
             every().day.at(row[3]).do(send_picture, row[1], row[4], 1, row[5])
         
         bot.send_message(update.effective_message.chat_id,
-                         'Ваш профиль рассылки успешно записан.')
+                         'Ваш профиль рассылки успешно записан.',
+                         reply_markup=ReplyKeyboardMarkup(
+                             [pic_types], one_time_keyboard=False,
+                             input_field_placeholder='',
+                             resize_keyboard=True
+                             ))
         return ConversationHandler.END
     
-    update.message.reply_text('Вы ввели некорректный аргумент')
+    update.message.reply_text('Вы ввели некорректный аргумент',
+                              reply_markup=ReplyKeyboardMarkup(
+                                  [pic_types], one_time_keyboard=False,
+                                  input_field_placeholder='',
+                                  resize_keyboard=True
+                                  ))
     return ConversationHandler.END
 
 
 def cancel(update: Update, context: CallbackContext):
     """ Выход из диалога """
-    update.message.reply_text(':)')
+    update.message.reply_text(':)',
+                              reply_markup=ReplyKeyboardMarkup(
+                                  [pic_types], one_time_keyboard=False,
+                                  input_field_placeholder='',
+                                  resize_keyboard=True
+                                  ))
     return ConversationHandler.END
 
 
@@ -323,21 +401,24 @@ if __name__ == "__main__":
         CommandHandler('delete_profile', delete_profile_handler))
     dispatcher.add_handler(
         CommandHandler('admin', admin_handler))
+    dispatcher.add_handler(
+        CommandHandler('next_bell', next_bell_handler))
+    
     
     # Привязка типов фоток к функции.
     for i in pic_types:
         dispatcher.add_handler(
             MessageHandler(Filters.regex(re.compile(i, re.IGNORECASE)),
-            picture_command_handler))
+                           picture_command_handler))
     
     # Вывод при неизвестной команде.
     dispatcher.add_handler(
         MessageHandler(Filters.text | Filters.command, exception_handler))
-
+    
     # Запуск бота.
     updater.start_polling()
     print('Bot online')
-
+    
     # Проверка времени для всех работ раз в 10 секунд.
     while True:
         sleep(10)
